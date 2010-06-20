@@ -6,6 +6,8 @@ import wnck
 import keybinder
 
 window_states = {}
+prev_command = [((0, 0), datetime.now())]
+
 
 def get_window_state(wnd):
     xid = wnd.get_xid()
@@ -19,7 +21,7 @@ def set_window_state(wnd, state, geometry):
     xid = wnd.get_xid()
     window_states[xid] = (state, geometry)
 
-def toggle_snap(snapx, snapy):
+def snap_window(snapx, snapy):
     scr = wnck.screen_get_default()
     # pending gtk events must be treated before any windows can be investigated
     while gtk.events_pending():
@@ -30,22 +32,14 @@ def toggle_snap(snapx, snapy):
         return
 
     (oldsnapx, oldsnapy), (oldx, oldy, oldwidth, oldheight) = get_window_state(wnd)
-
     if((oldsnapx, oldsnapy) == (0, 0)):
-        # if unsnapped, get the unmaximized (i.e. normal) geometry
+        # if unsnapped, save the current unmaximized (i.e. normal) geometry
         if(wnd.is_maximized()):
             wnd.unmaximize()
         (oldx, oldy, oldwidth, oldheight) = wnd.get_geometry()
     
-    if(oldsnapx == snapx):
-        snapx = 0
-    else:
-        snapx = snapx or oldsnapx
-
-    if(oldsnapy == snapy):
-        snapy = 0
-    else:
-        snapy = snapy or oldsnapy
+    if((oldsnapx, oldsnapy) == (snapx, snapy)):
+        snapx, snapy = (0, 0)
 
     width = oldwidth
     if snapx:
@@ -82,16 +76,25 @@ def toggle_snap(snapx, snapy):
     set_window_state(wnd, (snapx, snapy), (oldx, oldy, oldwidth, oldheight))
 
 
-
-def osnap_h(data):
+def osnap_shortcut_handler(data):
     [snapx, snapy] = [int(x) for x in data.split(',')]
-    toggle_snap(snapx, snapy)
+    now = datetime.now()
+    last_snap = prev_command[0][0]
+    last_snap_time = prev_command[0][1]
+    if((now - last_snap_time).microseconds < 250000):
+        if(snapx):
+            snapy = last_snap[1]
+        elif(snapy):
+            snapx = last_snap[0]
+        
+    snap_window(snapx, snapy)
+    prev_command[0] = ((snapx, snapy), now)
 
 def bind_shortcuts():
-    keybinder.bind("<Super>Left", osnap_h, "-1,0");
-    keybinder.bind("<Super>Right", osnap_h, "1,0");
-    keybinder.bind("<Super>Up", osnap_h, "0,-1");
-    keybinder.bind("<Super>Down", osnap_h, "0,1");
+    keybinder.bind("<Super>Left", osnap_shortcut_handler, "-1,0");
+    keybinder.bind("<Super>Right", osnap_shortcut_handler, "1,0");
+    keybinder.bind("<Super>Up", osnap_shortcut_handler, "0,-1");
+    keybinder.bind("<Super>Down", osnap_shortcut_handler, "0,1");
 
 bind_shortcuts();
 gtk.main()
