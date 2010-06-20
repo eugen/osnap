@@ -9,6 +9,7 @@ db = sqlite3.connect('osnap.db')
 try:
     db.execute("create table windows(id ulong, snapx int, snapy int, offsetx int, offsety int, width int, height int)")
 except:
+    print("table already created")
     pass
 
 SNAPPED_NONE   = 0
@@ -41,24 +42,23 @@ def set_window_state(wnd, state, geometry):
     db.execute("delete from [windows] where id = $1", [xid])
     db.execute("insert into [windows] values($1, $2, $3, $4, $5, $6, $7)",
                  [xid, snapx, snapy, x, y, w, h])
-    print("saved ((%d, %d), %d, %d, %d, %d)" % (snapx, snapy, x, y, w, h))
 
 def toggle_snap(snapx, snapy):
     scr = wnck.screen_get_default()
+    # pending gtk events must be treated before any windows can be investigated
     while gtk.events_pending():
         gtk.main_iteration()
     wnd = scr.get_active_window()
     if(not(wnd)):
-        print("Cannot get active window!")
+        print("cannot get active window!")
         return
-    
 
     (oldsnapx, oldsnapy), oldx, oldy, oldwidth, oldheight = get_window_state(wnd)
-    print("read  " + str(((oldsnapx, oldsnapy), oldx, oldy, oldwidth, oldheight)))
 
     if((oldsnapx, oldsnapy) == (0, 0)):
         # if unsnapped, get the unmaximized (i.e. normal) geometry
-        wnd.unmaximize()
+        if(wnd.is_maximized()):
+            wnd.unmaximize()
         (oldx, oldy, oldwidth, oldheight) = wnd.get_geometry()
     
     if(oldsnapx == snapx):
@@ -101,7 +101,6 @@ def toggle_snap(snapx, snapy):
     if(snapy and not(snapx)):
         wnd.maximize_horizontally()
 
-    print("new: %d %d - %d x %d" % (x, y, width, height))
     wnd.set_geometry(10, 15, x, y, width, height)
 
     set_window_state(wnd, (snapx, snapy), (oldx, oldy, oldwidth, oldheight))
