@@ -1,47 +1,23 @@
 #!/usr/bin/python
 
-import sys
-import sqlite3
+from datetime import datetime
 import gtk
 import wnck
+import keybinder
 
-db = sqlite3.connect('osnap.db')
-try:
-    db.execute("create table windows(id ulong, snapx int, snapy int, offsetx int, offsety int, width int, height int)")
-except:
-    print("table already created")
-    pass
-
-SNAPPED_NONE   = 0
-SNAPPED_LEFT   = 1 << 0
-SNAPPED_RIGHT  = 1 << 1
-SNAPPED_TOP    = 1 << 2
-SNAPPED_BOTTOM = 1 << 3
-
-SNAPPED_HORIZ = SNAPPED_LEFT | SNAPPED_RIGHT
-SNAPPED_VERT = SNAPPED_TOP | SNAPPED_BOTTOM
-
+window_states = {}
 
 def get_window_state(wnd):
-    row = db.execute(
-         "select snapx, snapy, offsetx, offsety, width, height "+
-         "from [windows] where id = $1", 
-         [wnd.get_xid()]).fetchone()
-
-    if(row != None):
-        snapx, snapy, x, y, w, h = row
-        return ((snapx, snapy), x, y, w, h)
+    xid = wnd.get_xid()
+    if(window_states.has_key(xid)):
+        return window_states[xid]
     else:
         x, y, w, h = wnd.get_geometry()
-        return ((0, 0), x, y, w, h)
+        return ((0, 0), (x, y, w, h))
 
 def set_window_state(wnd, state, geometry):
-    x, y, w, h = geometry
-    snapx, snapy = state
     xid = wnd.get_xid()
-    db.execute("delete from [windows] where id = $1", [xid])
-    db.execute("insert into [windows] values($1, $2, $3, $4, $5, $6, $7)",
-                 [xid, snapx, snapy, x, y, w, h])
+    window_states[xid] = (state, geometry)
 
 def toggle_snap(snapx, snapy):
     scr = wnck.screen_get_default()
@@ -53,7 +29,7 @@ def toggle_snap(snapx, snapy):
         print("cannot get active window!")
         return
 
-    (oldsnapx, oldsnapy), oldx, oldy, oldwidth, oldheight = get_window_state(wnd)
+    (oldsnapx, oldsnapy), (oldx, oldy, oldwidth, oldheight) = get_window_state(wnd)
 
     if((oldsnapx, oldsnapy) == (0, 0)):
         # if unsnapped, get the unmaximized (i.e. normal) geometry
@@ -105,8 +81,17 @@ def toggle_snap(snapx, snapy):
 
     set_window_state(wnd, (snapx, snapy), (oldx, oldy, oldwidth, oldheight))
 
-try:
-    toggle_snap(int(sys.argv[1]), int(sys.argv[2]))
-finally:
-    db.commit()
-    db.close()
+
+
+def osnap_h(data):
+    [snapx, snapy] = [int(x) for x in data.split(',')]
+    toggle_snap(snapx, snapy)
+
+def bind_shortcuts():
+    keybinder.bind("<Super>Left", osnap_h, "-1,0");
+    keybinder.bind("<Super>Right", osnap_h, "1,0");
+    keybinder.bind("<Super>Up", osnap_h, "0,-1");
+    keybinder.bind("<Super>Down", osnap_h, "0,1");
+
+bind_shortcuts();
+gtk.main()
